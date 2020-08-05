@@ -161,15 +161,43 @@ django使用pymysql库时，会有mysqlclient版本问题，可以修改源码�
 
 django在生成迁移文件后，如果删除此迁移文件，查看一下django_migrations表，看表中的迁移文件是否删除。
 
-### 数据库查询优化
+### 数据库优化
 
-Teacher.objects.all().select_related('subject') 可以聚合查询
+查看mysql语句执行时间
 
-Teacher.objects.all().only('name', 'good_count', 'bad_count') 可以查询具体想要的列
+查看profile是否开启，数据库默认是不开启的。变量profiling是用户变量，每次都要重新启动
 
-queryset = Teacher.objects.values('subject__name').annotate(good=Avg('good_count'), bad=Avg('bad_count'))    分组查询也支持
+查看方法： `show variables like "%pro%";`
+
+设置开启方法： `set profiling = 1;`
+
+执行完sql语句后，`show profiles`可以查看sql语句的执行时间
+
+测试完毕后，关闭参数：`mysql> set profiling=0`
+
+在sql语句前面加上 explain 可以查看查询了多少行 `explain sql`
+
+#### 查询优化
+
+>Teacher.objects.all().select_related('subject') 可以聚合查询
+>Teacher.objects.all().only('name', 'good_count', 'bad_count') 可以查询具体想要的列
+>queryset = Teacher.objects.values('subject__name').annotate(good=Avg('good_count'), bad=Avg('bad_count'))    分组查询也支持
 
 Django的ORM框架允许我们用面向对象的方式完成关系数据库中的分组和聚合查询。
+
+#### 索引优化
+
+索引就是根据表中的一列或若干列按照一定顺序建立的列值与记录行之间的对应关系表，实质上是一张描述索引列的列值与原表中记录行之间一 一对应关系的有序表。
+
+索引类型：主键、外键、unique、普通索引(index)
+
+创建索引
+>CREATE <索引名> ON <表名> (<列名> [<长度>] [ ASC | DESC]) 只能添加普通索引和unique
+
+或者
+>ALTER TABLE 表名 ADD 索引类型 (unique,primary key,fulltext,index)[索引名](字段名)
+
+like '% %'查询会遍历整个表，索引不起作用。
 
 ### 前后端分离
 
@@ -210,7 +238,111 @@ ajax通过对页面元素的操作来进行页面更新。取用json数据时，
 
 循环取用元素，使用$each()来进行循环。
 
-### js相关
+### 前端相关知识
+
+#### js相关
 
 js使用变量需要声明，var关键字，尤其是在嵌套循环中，如果使用的标志变量相同，会引起循环混乱。
+
+使用js利用ajax接收到的数据添加元素的方法为拼接标签字符串，可以先将所要得到的标签写出来，再将变量添加进去，提高速度。
+
+##### 事件代理
+
+新添加的元素，不能直接给他添加事件。如果需要添加事件,可在页面原先存在的且为他的祖先元素中添加事件，叫做事件代理。以点击事件为例
+
+ `$('#movie_info').on('click','.show_intro', function(){}`
+
+.show_intro为新添加的元素，#movie_info是他的祖先元素
+
+### 缓存
+
+缓存的工作流程：
+
+```
+given a URL, try finding that page in the cache
+if the page is in the cache:
+    return the cached page
+else:
+    generate the page
+    save the generated page in the cache (for next time)
+    return the generated page
+```
+
+#### django中缓存分类
+
+可以使用 Memcached、数据库、文件系统、本地内存、用于开发模式的虚拟缓存，也可以使用自定义的缓存后台。
+
+### 设置数据库缓存
+
+在setting文件中设置，还有一些非必须的缓存参数，TIMEOUT、OPTIONS等
+
+```
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'my_cache_table', #缓存表的名字
+    }
+}
+```
+
+然后创建缓存表
+>python manage.py createcachetable
+
+如果只是想查看创建缓存表的sql语句，可以使用
+> createcachetable --dry-run
+
+### 设置redis缓存
+
+1. 安装redis
+2. redis设置密码
+3. 安装django-redis
+4. 在setting文件中配置
+```
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379',
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+             "PASSWORD": "*******",
+        },
+    },
+}
+```
+
+缓存设置完成后，选择需要在哪些页面中设置缓存。
+
+#### 整个站点
+
+添加中间件，位置不能变化，要在最上面和最下面添加中间件。
+
+```
+MIDDLEWARE = [
+    'django.middleware.cache.UpdateCacheMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.cache.FetchFromCacheMiddleware',
+]
+```
+
+#### 在视图中添加缓存或者在urlconf中指定
+
+在视图中添加是给视图函数添加装饰器
+
+>from django.views.decorators.cache import cache_page
+
+在urlconf中指定
+>cache_page(3.60)(views.tags)
+
+#### 在模板中添加缓存
+
+在模板中添加缓存需要指定两个参数，过期时间和缓存片段的名称
+
+```
+{% load cache %}
+{% cache 500 sidebar %}
+    .. sidebar ..
+{% endcache %}
+```
+
+#### 底层缓存API（待补）
 
