@@ -346,3 +346,130 @@ MIDDLEWARE = [
 
 #### 底层缓存API（待补）
 
+
+
+## django 项目部署
+
+Django 的主要部署平台是 WSGI，它是 Web 服务器和 Web 应用的 Python 标准。
+
+### gunicore
+
+Gunicorn（'Green Unicorn'）是一个UNIX下一个纯Python WSGI服务器。
+
+#### 安装
+
+>pip install gunicorn  
+
+#### 运行
+
+##### 遇到问题
+
+debug = False 后会碰到 500 错误，查阅文档后需要设置 `ALLOWED_HOSTS`，设置之后依旧报错。（未解决）
+
+>gunicorn showmovie.wsgi
+
+运行后，会出现静态文件无法加载的现象，需要将静态文件收集起来。  
+在 settings 文件中添加 `STATIC_ROOT = os.path.join(BASE_DIR, "static/")`，然后执行
+>python manage.py collectstatic
+
+此时运行之后，可以在浏览器中访问，静态文件可以加载出来。
+
+### uWSGI
+
+uWSGI是一个Web服务器，它实现了WSGI协议、uwsgi、http等协议。Nginx中HttpUwsgiModule的作用是与uWSGI服务器进行交换。  
+
+* WSGI是一种通信协议。
+* uwsgi是一种线路协议而不是通信协议，常用于在uWSGI服务器与其他网络服务器的数据通信。
+* uWSGI是实现了uwsgi和WSGI两种协议的Web服务器。  
+
+#### 安装运行
+
+> pip install uwsgi  
+
+##### 命令行中带参数启动
+
+> uwsgi --http :8000 --file showmovie/wsgi.py   # 指定端口号和配置文件路径
+
+##### 使用初始化文件启动
+
+新建 uwsgi.ini 文件，写入
+```
+[uwsgi]
+
+# Django-related settings
+# the base directory (full path)
+chdir           = /home/scanv/PycharmProjects/movie/movie_git
+# Django's wsgi file
+module          = showmovie.wsgi:application
+# the virtualenv (full path)
+home            = /home/scanv/PycharmProjects/test/venv
+# process-related settings
+# master
+master          = true
+# maximum number of worker processes
+processes       = 1
+# pid file
+pidfile         = /home/scanv/PycharmProjects/movie/movie_git/uwsgi/uwsgi.pid
+# The address and port of the monitor
+http            = :8000
+# clear environment on exit
+vacuum          = true
+#The process runs in the background and types the log to the specified log file
+daemonize       = /home/scanv/PycharmProjects/movie/movie_git/uwsgi/uwsgi.log
+```
+
+使用初始化文件启动
+
+> uwsgi --ini uwsgi.ini # 启动  
+> uwsgi --reload uwsgi.pid # 重启  
+> uwsgi --stop uwsgi.pid # 关闭
+
+报错 `!!! no internal routing support, rebuild with pcre support !!!`，重新编译 uwsgi
+> pip uninstall uwsgi  
+> sudo apt-get install libpcre3 libpcre3-dev  
+> pip install uwsgi --no-cache-dir #加上–no-cache-dir,可以强制下载重新编译安装的库，不然pip会直接从缓存中拿出了上次编译后的 uwsgi 文件，并没有重新编译一份。
+
+重新启动后，访问站点可以显示内容，说明 uwsgi 部署 django 项目没有问题，接下来配置 nginx。  
+
+#### Nginx
+
+使用 nginx + uwsgi 部署django，它的流程是：  
+>the web client <-> the web server <-> the socket <-> uwsgi <-> Django
+
+nginx 安装配置
+>apt-get install nginx  
+
+nginx 配置  
+新建 movie.conf 文件，写入  
+
+```
+server {
+        listen 8000;
+        server_name localhost;
+
+        # 指定项目路径uwsgi
+        location / {
+            include uwsgi_params; # 导入一个Nginx模块他是用来和uWSGI进行通讯的
+            uwsgi_connect_timeout 30; # 设置连接uWSGI超时时间
+            uwsgi_pass unix:/home/scanv/PycharmProjects/movie/movie_git/movie.sock; # 指定uwsgi的sock文件所有动态请求就会直接丢给他
+            }
+
+        # 指定静态文件路径
+        location /static/ {
+            alias /home/scanv/PycharmProjects/movie/movie_git/static/;
+            }
+
+    }
+
+```
+
+注意 uwsgi_pass 和 uwsgi.ini 中的 socket 相同。配置完 nginx 之后，还需要更改 uwsgi.ini  
+
+```
+# http            = 127.0.0.1:8000 #http 注释掉
+socket          = /home/scanv/PycharmProjects/movie/movie_git/movie.sock #设置 socket 路径
+
+# 其余设置不用更改
+```
+
+配置完成之后，`nginx -s reload` 重新加载 nginx，此时访问 8000 端口，可以看到首页信息。  
