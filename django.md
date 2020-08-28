@@ -1,5 +1,11 @@
 # django知识
 
+## django 问题总结
+
+### 日期时间 json 格式问题
+
+日期时间在使用 JsonResponse 返回 json 数据时，返回的日期和时间中间会有一个 T，解决方法，给时间格式化，如`time.strftime('%Y-%m-%d %H:%M:%S')`
+
 ## 项目创建运行
 
 ### 创建虚拟环境
@@ -90,6 +96,12 @@ Models.objects.方法，filter、exclude返回查寻集，查寻集条件表示�
 #### 关系操作
 
 一对一：OneToOneField，一对多：ForeignKey，一对多中，主模型可以通过 子模型名_set访问关联的子模型，多对多关系: ManyToManyfield
+
+#### 模型数据应用 choice 选项
+
+应用 choice 选项可以实现在数据库和网页中显示不同的内容。
+
+如果想应用 choice 所对应的真值，使用`模型实例.get_应用choice的字段_display()`返回
 
 #### 模型类继承
 
